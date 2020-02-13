@@ -1,0 +1,57 @@
+variables: 
+  containerName: Build 
+  image: mcr.microsoft.com/businesscentral/sandbox:ltsc2019 
+  LicenseFile: C:\License\MyLicense.flf 
+  ArtifactName: MyApp 
+  system.debug: false  
+ 
+
+trigger: 
+- master  
+ 
+
+pool: 
+  name: Default     #Using default agent pool 
+  demands: docker   #Agent must support docker  
+ 
+
+steps: 
+- checkout: self 
+  submodules: true  
+ 
+
+- task: PowerShell@2 
+  inputs: 
+    targetType: 'inline' 
+    script: | 
+
+      $credential = [PSCredential]::new("admin", (ConvertTo-SecureString -String "123456789" -AsPlainText -Force)) 
+
+      New-NavContainer -accept_eula -containerName  $(containerName) -imageName $(image) -auth NavUserPassword -licenseFile $(LicenseFile) -Credential $credential -isolation hyperv -updateHosts 
+ 
+
+- task: CopyFiles@2 
+  inputs: 
+    Contents: '**' 
+    TargetFolder: 'C:\ProgramData\NavContainerHelper\Extensions\$(containerName)\my' 
+    OverWrite: true  
+ 
+
+- task: PowerShell@2 
+  inputs: 
+    targetType: 'inline' 
+    script: | 
+      $credential = [PSCredential]::new("admin", (ConvertTo-SecureString -String "123456789" -AsPlainText -Force)) 
+
+      Compile-AppInNavContainer -appProjectFolder C:\ProgramData\NavContainerHelper\Extensions\$(containerName)\my\app -containerName $(containerName)  -AzureDevOps -EnablePerTenantExtensionCop -EnableCodeCop -EnableUICop -FailOn error -credential $credential 
+
+      $appFile = Get-ChildItem -Path C:\ProgramData\NavContainerHelper\Extensions\$(containerName)\my\app\output\*.app -Recurse -Force 
+
+      Publish-NavContainerApp -appFile $appfile -containerName $(containerName) -install -skipVerification -sync -syncMode ForceSync  
+ 
+
+- task: PublishBuildArtifacts@1 
+  inputs: 
+    PathtoPublish: '"C:\ProgramData\NavContainerHelper\Extensions\$(containerName)\my\app\output\"' 
+    ArtifactName: $(ArtifactName) 
+    publishLocation: 'Container'
